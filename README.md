@@ -13,7 +13,7 @@
 - `下一張` 會優先顯示看過次數少、且最近 20 張沒有出現過的單字。
 - `最早看過` 會優先顯示最久以前看過的單字。
 - 發音按鈕使用瀏覽器內建英文語音。
-- `查詢單字` 會透過字典 API 帶入英文解釋、例句、音標；如果設定 Google Translation API key，會再帶入繁體中文翻譯。
+- `查詢單字` 會自動帶入中文意思和英文例句；解釋和補充筆記可自行選填。
 
 ## 設定 Supabase
 
@@ -26,10 +26,9 @@
 ```bash
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your-supabase-publishable-or-anon-key
-GOOGLE_TRANSLATE_API_KEY=your-google-translate-api-key
 ```
 
-`GOOGLE_TRANSLATE_API_KEY` 可先不填。沒有設定時，查詢單字仍會帶入字典裡的英文解釋、例句和音標。
+查詢單字使用免金鑰的字典與翻譯 API。免費翻譯結果可能不一定完全準確，儲存前可以自己修改。
 
 ## 本機開發
 
@@ -42,7 +41,7 @@ pnpm dev
 
 1. 把 `supabase-version` 這個資料夾推到 GitHub。
 2. 在 Vercel 匯入專案。
-3. 到 Vercel Project Settings 設定 Supabase 環境變數；如果要繁中自動翻譯，再加上 `GOOGLE_TRANSLATE_API_KEY`。
+3. 到 Vercel Project Settings 設定 Supabase 環境變數。
 4. 部署後就可以用 Vercel 網址或自己的網域打開。
 
 ## 下一步

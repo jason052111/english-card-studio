@@ -11,17 +11,11 @@ type DictionaryMeaning = {
 
 type DictionaryEntry = {
   word?: string;
-  phonetic?: string;
-  phonetics?: Array<{
-    text?: string;
-    audio?: string;
-  }>;
   meanings?: DictionaryMeaning[];
 };
 
 type LookupDetails = {
   word: string;
-  pronunciation: string;
   meaning: string;
   explanation: string;
   example_sentence: string;
@@ -31,6 +25,7 @@ type LookupDetails = {
 
 const DICTIONARY_BASE_URL = "https://api.dictionaryapi.dev/api/v2/entries/en";
 const GOOGLE_TRANSLATE_URL = "https://translation.googleapis.com/language/translate/v2";
+const MYMEMORY_TRANSLATE_URL = "https://api.mymemory.translated.net/get";
 
 export async function POST(request: Request) {
   let body: unknown;
@@ -55,27 +50,19 @@ export async function POST(request: Request) {
 
   const entries = await fetchDictionaryEntries(word);
   const dictionaryDetails = extractDictionaryDetails(entries);
-  const translated = await translateToTraditionalChinese([
-    word,
-    dictionaryDetails.definition,
-  ]);
+  const meaning = await translateWordToTraditionalChinese(word);
 
   const details: LookupDetails = {
     word,
-    pronunciation: dictionaryDetails.pronunciation,
-    meaning: translated[0] ?? "",
-    explanation: translated[1] ?? dictionaryDetails.definition,
+    meaning,
+    explanation: "",
     example_sentence: dictionaryDetails.example,
-    note: dictionaryDetails.note,
+    note: "",
     warning: "",
   };
 
-  if (!entries.length && !details.meaning) {
+  if (!entries.length && !isUsefulTranslation(details.meaning, word)) {
     return Response.json({ error: "查不到這個單字，請確認拼字。" }, { status: 404 });
-  }
-
-  if (!process.env.GOOGLE_TRANSLATE_API_KEY && !process.env.GOOGLE_CLOUD_TRANSLATE_API_KEY) {
-    details.warning = "尚未設定 Google 翻譯金鑰，已先帶入英文解釋。";
   }
 
   return Response.json(details);
@@ -101,10 +88,6 @@ async function fetchDictionaryEntries(word: string): Promise<DictionaryEntry[]> 
 }
 
 function extractDictionaryDetails(entries: DictionaryEntry[]) {
-  const firstEntry = entries[0];
-  const pronunciation =
-    firstEntry?.phonetics?.find((item) => item.text)?.text ?? firstEntry?.phonetic ?? "";
-
   const definitions = entries.flatMap((entry) =>
     (entry.meanings ?? []).flatMap((meaning) =>
       (meaning.definitions ?? [])
@@ -118,19 +101,21 @@ function extractDictionaryDetails(entries: DictionaryEntry[]) {
 
   const bestDefinition = definitions.find((definition) => definition.example) ?? definitions[0];
   const example = definitions.find((definition) => definition.example)?.example ?? "";
-  const partOfSpeech = bestDefinition?.partOfSpeech ?? "";
-  const synonyms = bestDefinition?.synonyms?.slice(0, 4).join(", ") ?? "";
-  const noteParts = [
-    partOfSpeech ? `詞性：${translatePartOfSpeech(partOfSpeech)}` : "",
-    synonyms ? `相近詞：${synonyms}` : "",
-  ].filter(Boolean);
 
   return {
-    pronunciation,
     definition: bestDefinition?.definition ?? "",
     example,
-    note: noteParts.join("；"),
   };
+}
+
+async function translateWordToTraditionalChinese(word: string) {
+  const googleTranslation = await translateWithGoogle(word);
+  if (googleTranslation) return googleTranslation;
+
+  const myMemoryTranslation = await translateWithMyMemory(word);
+  if (isUsefulTranslation(myMemoryTranslation, word)) return myMemoryTranslation;
+
+  return "";
 }
 
 async function translateToTraditionalChinese(texts: string[]) {
@@ -176,20 +161,35 @@ async function translateToTraditionalChinese(texts: string[]) {
   }
 }
 
-function translatePartOfSpeech(value: string) {
-  const labels: Record<string, string> = {
-    adjective: "形容詞",
-    adverb: "副詞",
-    conjunction: "連接詞",
-    exclamation: "感嘆詞",
-    interjection: "感嘆詞",
-    noun: "名詞",
-    preposition: "介系詞",
-    pronoun: "代名詞",
-    verb: "動詞",
-  };
+async function translateWithGoogle(text: string) {
+  const [translated] = await translateToTraditionalChinese([text]);
+  return translated;
+}
 
-  return labels[value.toLowerCase()] ?? value;
+async function translateWithMyMemory(text: string) {
+  try {
+    const url = new URL(MYMEMORY_TRANSLATE_URL);
+    url.searchParams.set("q", text);
+    url.searchParams.set("langpair", "en|zh-TW");
+
+    const response = await fetch(url, { cache: "no-store" });
+
+    if (!response.ok) return "";
+
+    const data = (await response.json()) as {
+      responseData?: { translatedText?: string };
+    };
+
+    return decodeHtmlEntities(data.responseData?.translatedText ?? "").trim();
+  } catch {
+    return "";
+  }
+}
+
+function isUsefulTranslation(value: string, source: string) {
+  const normalizedValue = value.trim().toLowerCase();
+  const normalizedSource = source.trim().toLowerCase();
+  return Boolean(normalizedValue && normalizedValue !== normalizedSource);
 }
 
 function decodeHtmlEntities(value: string) {

@@ -16,7 +16,6 @@ type ReviewStrategy = "least-seen" | "oldest-seen";
 
 type WordDraft = {
   word: string;
-  pronunciation: string;
   meaning: string;
   explanation: string;
   example_sentence: string;
@@ -31,7 +30,6 @@ const RECENT_LIMIT = 20;
 
 const emptyDraft: WordDraft = {
   word: "",
-  pronunciation: "",
   meaning: "",
   explanation: "",
   example_sentence: "",
@@ -350,7 +348,7 @@ export default function Home() {
       user_id: session.user.id,
       group_id: activeGroup.id,
       word: wordText,
-      pronunciation: finalDetails.pronunciation,
+      pronunciation: "",
       meaning: finalDetails.meaning,
       explanation: finalDetails.explanation,
       example_sentence: finalDetails.example_sentence,
@@ -547,11 +545,8 @@ export default function Home() {
 
     setWordDraft((current) => ({
       ...current,
-      pronunciation: details.pronunciation?.trim() || current.pronunciation,
       meaning: details.meaning?.trim() || current.meaning,
-      explanation: details.explanation?.trim() || current.explanation,
       example_sentence: details.example_sentence?.trim() || current.example_sentence,
-      note: details.note?.trim() || current.note,
     }));
     setMessage(details.warning || "已帶入查詢結果，可以修改後儲存。");
   }
@@ -816,9 +811,6 @@ export default function Home() {
                         </button>
                       </div>
                     </div>
-                    {activeCard.pronunciation && (
-                      <p className="phonetic">{activeCard.pronunciation}</p>
-                    )}
                     {activeCard.meaning && <p className="meaning">{activeCard.meaning}</p>}
                     {(activeCard.explanation || activeCard.example_sentence || activeCard.note) && (
                       <div className="divider" />
@@ -953,30 +945,20 @@ export default function Home() {
                 />
               </label>
 
-              <div className="form-row">
-                <label>
-                  中文意思
-                  <input
-                    onChange={(event) => updateDraft("meaning", event.target.value)}
-                    placeholder="動力；推進力"
-                    value={wordDraft.meaning}
-                  />
-                </label>
-                <label>
-                  發音提示
-                  <input
-                    onChange={(event) => updateDraft("pronunciation", event.target.value)}
-                    placeholder="mo-men-tum"
-                    value={wordDraft.pronunciation}
-                  />
-                </label>
-              </div>
+              <label>
+                中文意思
+                <input
+                  onChange={(event) => updateDraft("meaning", event.target.value)}
+                  placeholder="查詢後會自動帶入，也可以自己修改。"
+                  value={wordDraft.meaning}
+                />
+              </label>
 
               <label>
                 解釋
                 <textarea
                   onChange={(event) => updateDraft("explanation", event.target.value)}
-                  placeholder="查詢後會自動帶入，也可以自己修改。"
+                  placeholder="自行選填。留空時，卡片上不會顯示這一段。"
                   rows={3}
                   value={wordDraft.explanation}
                 />
@@ -1025,7 +1007,6 @@ export default function Home() {
 
 function buildDraftDetails(draft: WordDraft) {
   return {
-    pronunciation: draft.pronunciation.trim(),
     meaning: draft.meaning.trim(),
     explanation: draft.explanation.trim(),
     example_sentence: draft.example_sentence.trim(),
@@ -1038,7 +1019,6 @@ function mergeLookupIntoDetails(
   lookupDetails: WordLookup | null,
 ) {
   return {
-    pronunciation: draftDetails.pronunciation || lookupDetails?.pronunciation?.trim() || "",
     meaning: draftDetails.meaning || lookupDetails?.meaning?.trim() || "",
     explanation: draftDetails.explanation || lookupDetails?.explanation?.trim() || "",
     example_sentence: draftDetails.example_sentence || lookupDetails?.example_sentence?.trim() || "",
