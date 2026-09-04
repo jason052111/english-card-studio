@@ -13,7 +13,7 @@
 - `下一張` 會優先顯示看過次數少、且最近 20 張沒有出現過的單字。
 - `最早看過` 會優先顯示最久以前看過的單字。
 - 發音按鈕使用瀏覽器內建英文語音。
-- `AI 生成` 目前仍是模板假資料，之後可接 OpenAI API。
+- `查詢單字` 會透過字典 API 帶入英文解釋、例句、音標；如果設定 Google Translation API key，會再帶入繁體中文翻譯。
 
 ## 設定 Supabase
 
@@ -26,7 +26,10 @@
 ```bash
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your-supabase-publishable-or-anon-key
+GOOGLE_TRANSLATE_API_KEY=your-google-translate-api-key
 ```
+
+`GOOGLE_TRANSLATE_API_KEY` 可先不填。沒有設定時，查詢單字仍會帶入字典裡的英文解釋、例句和音標。
 
 ## 本機開發
 
@@ -39,11 +42,11 @@ pnpm dev
 
 1. 把 `supabase-version` 這個資料夾推到 GitHub。
 2. 在 Vercel 匯入專案。
-3. 到 Vercel Project Settings 設定同樣兩個環境變數。
+3. 到 Vercel Project Settings 設定 Supabase 環境變數；如果要繁中自動翻譯，再加上 `GOOGLE_TRANSLATE_API_KEY`。
 4. 部署後就可以用 Vercel 網址或自己的網域打開。
 
 ## 下一步
 
-- 把 `AI 生成` 接到 OpenAI API route。
-- 加入每人每日 AI 生成次數限制。
+- 加入批次匯入單字。
+- 加入編輯既有單字卡。
 - 加入匯入/匯出單字卡。

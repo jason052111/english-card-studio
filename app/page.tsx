@@ -16,7 +16,6 @@ type ReviewStrategy = "least-seen" | "oldest-seen";
 
 type WordDraft = {
   word: string;
-  prompt: string;
   pronunciation: string;
   meaning: string;
   explanation: string;
@@ -24,11 +23,14 @@ type WordDraft = {
   note: string;
 };
 
+type WordLookup = Partial<Omit<WordDraft, "word">> & {
+  warning?: string;
+};
+
 const RECENT_LIMIT = 20;
 
 const emptyDraft: WordDraft = {
   word: "",
-  prompt: "",
   pronunciation: "",
   meaning: "",
   explanation: "",
@@ -56,6 +58,7 @@ export default function Home() {
   const [showWordModal, setShowWordModal] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
   const [wordDraft, setWordDraft] = useState<WordDraft>(emptyDraft);
+  const [lookupBusy, setLookupBusy] = useState(false);
 
   const activeGroup = useMemo(
     () => groups.find((group) => group.id === activeGroupId) ?? null,
@@ -331,20 +334,27 @@ export default function Home() {
       return;
     }
 
+    const draftDetails = buildDraftDetails(wordDraft);
+    let lookupDetails: WordLookup | null = null;
+    const shouldAutoLookup = !Object.values(draftDetails).some(Boolean);
+
     setBusy(true);
     setMessage("");
 
+    if (shouldAutoLookup) {
+      lookupDetails = await fetchWordLookup(wordText);
+    }
+
+    const finalDetails = mergeLookupIntoDetails(draftDetails, lookupDetails);
     const payload = {
       user_id: session.user.id,
       group_id: activeGroup.id,
       word: wordText,
-      pronunciation: wordDraft.pronunciation.trim() || wordText,
-      meaning: wordDraft.meaning.trim() || "尚未填寫中文意思",
-      explanation: wordDraft.explanation.trim() || "尚未填寫解釋。",
-      example_sentence:
-        wordDraft.example_sentence.trim() ||
-        `I want to practice the word "${wordText}" today.`,
-      note: wordDraft.note.trim(),
+      pronunciation: finalDetails.pronunciation,
+      meaning: finalDetails.meaning,
+      explanation: finalDetails.explanation,
+      example_sentence: finalDetails.example_sentence,
+      note: finalDetails.note,
       favorite: false,
       seen_count: 0,
       first_seen_at: null,
@@ -515,23 +525,35 @@ export default function Home() {
     }
   }
 
-  function fillMockAiContent() {
-    const wordText = wordDraft.word.trim() || "example";
-    const prompt = wordDraft.prompt.trim();
+  async function lookupWordDetails() {
+    const wordText = wordDraft.word.trim();
+
+    if (!wordText) {
+      setMessage("請先輸入英文單字。");
+      return;
+    }
+
+    setLookupBusy(true);
+    setMessage("");
+
+    const details = await fetchWordLookup(wordText);
+
+    setLookupBusy(false);
+
+    if (!details) {
+      setMessage("查不到這個單字，請確認拼字，或手動填寫後儲存。");
+      return;
+    }
 
     setWordDraft((current) => ({
       ...current,
-      pronunciation: current.pronunciation || wordText,
-      meaning: current.meaning || "請填入 AI 回傳的中文意思",
-      explanation:
-        current.explanation ||
-        `這裡未來會接 GPT，根據「${wordText}」和你的 prompt 產生清楚的繁體中文解釋。`,
-      example_sentence:
-        current.example_sentence || `I will use "${wordText}" in a natural sentence.`,
-      note:
-        current.note ||
-        (prompt ? `Prompt：${prompt}` : "這裡可以放常見搭配、易混淆用法或口說提醒。"),
+      pronunciation: details.pronunciation?.trim() || current.pronunciation,
+      meaning: details.meaning?.trim() || current.meaning,
+      explanation: details.explanation?.trim() || current.explanation,
+      example_sentence: details.example_sentence?.trim() || current.example_sentence,
+      note: details.note?.trim() || current.note,
     }));
+    setMessage(details.warning || "已帶入查詢結果，可以修改後儲存。");
   }
 
   function speakActiveWord() {
@@ -794,12 +816,18 @@ export default function Home() {
                         </button>
                       </div>
                     </div>
-                    <p className="phonetic">{activeCard.pronunciation}</p>
-                    <p className="meaning">{activeCard.meaning}</p>
-                    <div className="divider" />
-                    <p className="explanation">{activeCard.explanation}</p>
-                    <blockquote>{activeCard.example_sentence}</blockquote>
-                    <p className="note">{activeCard.note}</p>
+                    {activeCard.pronunciation && (
+                      <p className="phonetic">{activeCard.pronunciation}</p>
+                    )}
+                    {activeCard.meaning && <p className="meaning">{activeCard.meaning}</p>}
+                    {(activeCard.explanation || activeCard.example_sentence || activeCard.note) && (
+                      <div className="divider" />
+                    )}
+                    {activeCard.explanation && (
+                      <p className="explanation">{activeCard.explanation}</p>
+                    )}
+                    {activeCard.example_sentence && <blockquote>{activeCard.example_sentence}</blockquote>}
+                    {activeCard.note && <p className="note">{activeCard.note}</p>}
                   </>
                 ) : (
                   <>
@@ -925,16 +953,6 @@ export default function Home() {
                 />
               </label>
 
-              <label>
-                給 AI 的 prompt
-                <textarea
-                  onChange={(event) => updateDraft("prompt", event.target.value)}
-                  placeholder="請用繁體中文解釋這個單字，給我自然例句和常見使用情境。"
-                  rows={4}
-                  value={wordDraft.prompt}
-                />
-              </label>
-
               <div className="form-row">
                 <label>
                   中文意思
@@ -958,7 +976,7 @@ export default function Home() {
                 解釋
                 <textarea
                   onChange={(event) => updateDraft("explanation", event.target.value)}
-                  placeholder="這個單字可以怎麼用？"
+                  placeholder="查詢後會自動帶入，也可以自己修改。"
                   rows={3}
                   value={wordDraft.explanation}
                 />
@@ -978,17 +996,22 @@ export default function Home() {
                 補充筆記
                 <textarea
                   onChange={(event) => updateDraft("note", event.target.value)}
-                  placeholder="容易搞混、常見搭配、口說用法..."
+                  placeholder="詞性、相近詞、容易搞混的地方..."
                   rows={2}
                   value={wordDraft.note}
                 />
               </label>
 
               <div className="form-actions">
-                <button className="secondary-button" onClick={fillMockAiContent} type="button">
-                  AI 生成
+                <button
+                  className="secondary-button"
+                  disabled={lookupBusy || busy}
+                  onClick={lookupWordDetails}
+                  type="button"
+                >
+                  {lookupBusy ? "查詢中" : "查詢單字"}
                 </button>
-                <button className="primary-button" disabled={busy} type="submit">
+                <button className="primary-button" disabled={busy || lookupBusy} type="submit">
                   儲存
                 </button>
               </div>
@@ -998,6 +1021,47 @@ export default function Home() {
       )}
     </>
   );
+}
+
+function buildDraftDetails(draft: WordDraft) {
+  return {
+    pronunciation: draft.pronunciation.trim(),
+    meaning: draft.meaning.trim(),
+    explanation: draft.explanation.trim(),
+    example_sentence: draft.example_sentence.trim(),
+    note: draft.note.trim(),
+  };
+}
+
+function mergeLookupIntoDetails(
+  draftDetails: Omit<WordDraft, "word">,
+  lookupDetails: WordLookup | null,
+) {
+  return {
+    pronunciation: draftDetails.pronunciation || lookupDetails?.pronunciation?.trim() || "",
+    meaning: draftDetails.meaning || lookupDetails?.meaning?.trim() || "",
+    explanation: draftDetails.explanation || lookupDetails?.explanation?.trim() || "",
+    example_sentence: draftDetails.example_sentence || lookupDetails?.example_sentence?.trim() || "",
+    note: draftDetails.note || lookupDetails?.note?.trim() || "",
+  };
+}
+
+async function fetchWordLookup(word: string): Promise<WordLookup | null> {
+  try {
+    const response = await fetch("/api/word-lookup", {
+      body: JSON.stringify({ word }),
+      headers: {
+        "Content-Type": "application/json",
+      },
+      method: "POST",
+    });
+
+    if (!response.ok) return null;
+
+    return (await response.json()) as WordLookup;
+  } catch {
+    return null;
+  }
 }
 
 function normalizeName(value: string) {
